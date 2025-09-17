@@ -1,0 +1,117 @@
+from pyrogram import Client, filters
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+import os
+import time
+import asyncio
+from database.database import db
+
+# Handle video/document upload
+@Client.on_message(filters.document | filters.video)
+async def handle_video_upload(client: Client, message: Message):
+    user_id = message.from_user.id
+    
+    # Check if user exists in database
+    user = await db.get_user(user_id)
+    if not user:
+        await message.reply_text("❌ Please start the bot first using /start")
+        return
+    
+    # Check file type
+    if message.document:
+        file = message.document
+        file_name = file.file_name
+        if not file_name or not any(file_name.lower().endswith(ext) for ext in ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv']):
+            await message.reply_text("❌ Please send a valid video file!")
+            return
+    elif message.video:
+        file = message.video
+        file_name = f"video_{int(time.time())}.mp4"
+    else:
+        return
+    
+    # Check file size (limit 2GB)
+    if file.file_size > 2 * 1024 * 1024 * 1024:
+        await message.reply_text("❌ File size too large! Maximum 2GB allowed.")
+        return
+    
+    # Create downloads directory if not exists
+    if not os.path.exists("downloads"):
+        os.makedirs("downloads")
+    
+    # Download progress callback
+    async def progress(current, total):
+        percent = (current / total) * 100
+        await status_msg.edit_text(
+            f"📥 **Downloading...**\n"
+            f"📁 File: `{file_name}`\n"
+            f"📊 Progress: {percent:.1f}%\n"
+            f"💾 {current / (1024*1024):.1f} MB / {total / (1024*1024):.1f} MB"
+        )
+    
+    status_msg = await message.reply_text("📥 Starting download...")
+    
+    try:
+        # Download the file
+        file_path = await client.download_media(
+            message,
+            file_name=f"downloads/{file_name}",
+            progress=progress
+        )
+        
+        # Create encode button
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎬 Encode Video", callback_data=f"encode_{user_id}_{os.path.basename(file_path)}")]
+        ])
+        
+        await status_msg.edit_text(
+            f"✅ **Download Complete!**\n"
+            f"📁 File: `{file_name}`\n"
+            f"💾 Size: {file.file_size / (1024*1024):.1f} MB\n\n"
+            f"Click below to start encoding:",
+            reply_markup=keyboard
+        )
+        
+    except Exception as e:
+        await status_msg.edit_text(f"❌ Download failed: {str(e)}")
+
+# Handle file upload for encoding
+async def upload_video(client: Client, file_path: str, chat_id: int, caption: str = ""):
+    """Upload encoded video back to user"""
+    
+    if not os.path.exists(file_path):
+        await client.send_message(chat_id, "❌ Encoded file not found!")
+        return
+    
+    file_size = os.path.getsize(file_path)
+    
+    # Upload progress callback
+    async def upload_progress(current, total):
+        percent = (current / total) * 100
+        await status_msg.edit_text(
+            f"📤 **Uploading...**\n"
+            f"📁 File: `{os.path.basename(file_path)}`\n"
+            f"📊 Progress: {percent:.1f}%\n"
+            f"💾 {current / (1024*1024):.1f} MB / {total / (1024*1024):.1f} MB"
+        )
+    
+    status_msg = await client.send_message(chat_id, "📤 Starting upload...")
+    
+    try:
+        # Upload the video
+        await client.send_video(
+            chat_id=chat_id,
+            video=file_path,
+            caption=caption or f"✅ **Encoded Video**\n💾 Size: {file_size / (1024*1024):.1f} MB",
+            progress=upload_progress
+        )
+        
+        await status_msg.delete()
+        
+        # Clean up files
+        try:
+            os.remove(file_path)
+        except:
+            pass
+            
+    except Exception as e:
+        await status_msg.edit_text(f"❌ Upload failed: {str(e)}")
