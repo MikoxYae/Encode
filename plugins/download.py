@@ -38,15 +38,27 @@ async def handle_video_upload(client: Client, message: Message):
     if not os.path.exists("downloads"):
         os.makedirs("downloads")
     
-    # Download progress callback
+    # Progress tracking variables
+    last_update_time = 0
+    
+    # Download progress callback with 20-second limit
     async def progress(current, total):
-        percent = (current / total) * 100
-        await status_msg.edit_text(
-            f"📥 **Downloading...**\n"
-            f"📁 File: `{file_name}`\n"
-            f"📊 Progress: {percent:.1f}%\n"
-            f"💾 {current / (1024*1024):.1f} MB / {total / (1024*1024):.1f} MB"
-        )
+        nonlocal last_update_time
+        current_time = time.time()
+        
+        # Only update every 20 seconds
+        if current_time - last_update_time >= 20:
+            percent = (current / total) * 100
+            try:
+                await status_msg.edit_text(
+                    f"📥 **Downloading...**\n"
+                    f"📁 File: `{file_name}`\n"
+                    f"📊 Progress: {percent:.1f}%\n"
+                    f"💾 {current / (1024*1024):.1f} MB / {total / (1024*1024):.1f} MB"
+                )
+                last_update_time = current_time
+            except:
+                pass  # Ignore edit errors
     
     status_msg = await message.reply_text("📥 Starting download...")
     
@@ -84,15 +96,27 @@ async def upload_video(client: Client, file_path: str, chat_id: int, caption: st
     
     file_size = os.path.getsize(file_path)
     
-    # Upload progress callback
+    # Progress tracking variables
+    last_update_time = 0
+    
+    # Upload progress callback with 20-second limit
     async def upload_progress(current, total):
-        percent = (current / total) * 100
-        await status_msg.edit_text(
-            f"📤 **Uploading...**\n"
-            f"📁 File: `{os.path.basename(file_path)}`\n"
-            f"📊 Progress: {percent:.1f}%\n"
-            f"💾 {current / (1024*1024):.1f} MB / {total / (1024*1024):.1f} MB"
-        )
+        nonlocal last_update_time
+        current_time = time.time()
+        
+        # Only update every 20 seconds
+        if current_time - last_update_time >= 20:
+            percent = (current / total) * 100
+            try:
+                await status_msg.edit_text(
+                    f"📤 **Uploading...**\n"
+                    f"📁 File: `{os.path.basename(file_path)}`\n"
+                    f"📊 Progress: {percent:.1f}%\n"
+                    f"💾 {current / (1024*1024):.1f} MB / {total / (1024*1024):.1f} MB"
+                )
+                last_update_time = current_time
+            except:
+                pass  # Ignore edit errors
     
     status_msg = await client.send_message(chat_id, "📤 Starting upload...")
     
