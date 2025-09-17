@@ -72,6 +72,7 @@ async def encode_video(client: Client, message: Message, input_path: str, user_i
     status_msg = await message.edit_text("🎬 **Encoding Started...**\n⏳ Please wait...")
     
     start_time = time.time()
+    last_update_time = 0
     
     try:
         # Run ffmpeg process
@@ -81,17 +82,26 @@ async def encode_video(client: Client, message: Message, input_path: str, user_i
             stderr=asyncio.subprocess.PIPE
         )
         
-        # Monitor encoding progress
+        # Monitor encoding progress with 20-second limit
         async def monitor_progress():
+            nonlocal last_update_time
             while process.returncode is None:
-                await asyncio.sleep(10)
-                elapsed = time.time() - start_time
-                await status_msg.edit_text(
-                    f"🎬 **Encoding in Progress...**\n"
-                    f"⏱️ Time elapsed: {int(elapsed)}s\n"
-                    f"📁 Input: `{os.path.basename(input_path)}`\n"
-                    f"🎯 Output: `{os.path.basename(output_path)}`"
-                )
+                await asyncio.sleep(5)  # Check every 5 seconds
+                current_time = time.time()
+                
+                # Only update message every 20 seconds
+                if current_time - last_update_time >= 20:
+                    elapsed = current_time - start_time
+                    try:
+                        await status_msg.edit_text(
+                            f"🎬 **Encoding in Progress...**\n"
+                            f"⏱️ Time elapsed: {int(elapsed)}s\n"
+                            f"📁 Input: `{os.path.basename(input_path)}`\n"
+                            f"🎯 Output: `{os.path.basename(output_path)}`"
+                        )
+                        last_update_time = current_time
+                    except:
+                        pass  # Ignore edit errors
         
         # Start monitoring
         monitor_task = asyncio.create_task(monitor_progress())
