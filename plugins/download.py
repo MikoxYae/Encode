@@ -3,7 +3,11 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 import os
 import time
 import asyncio
+import hashlib
 from database.database import db
+
+# Dictionary to store file mappings
+file_mappings = {}
 
 # Handle video/document upload
 @Client.on_message(filters.document | filters.video)
@@ -70,9 +74,19 @@ async def handle_video_upload(client: Client, message: Message):
             progress=progress
         )
         
-        # Create encode button
+        # Create short hash for callback data
+        file_hash = hashlib.md5(f"{user_id}_{os.path.basename(file_path)}".encode()).hexdigest()[:8]
+        
+        # Store file mapping
+        file_mappings[file_hash] = {
+            'user_id': user_id,
+            'file_path': os.path.basename(file_path),
+            'timestamp': time.time()
+        }
+        
+        # Create encode button with short callback data
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎬 Encode Video", callback_data=f"encode_{user_id}_{os.path.basename(file_path)}")]
+            [InlineKeyboardButton("🎬 Encode Video", callback_data=f"encode_{file_hash}")]
         ])
         
         await status_msg.edit_text(
@@ -139,3 +153,16 @@ async def upload_video(client: Client, file_path: str, chat_id: int, caption: st
             
     except Exception as e:
         await status_msg.edit_text(f"❌ Upload failed: {str(e)}")
+
+# Clean up old file mappings (call this periodically)
+def cleanup_old_mappings():
+    current_time = time.time()
+    expired_keys = []
+    
+    for key, data in file_mappings.items():
+        # Remove mappings older than 1 hour
+        if current_time - data['timestamp'] > 3600:
+            expired_keys.append(key)
+    
+    for key in expired_keys:
+        del file_mappings[key]
