@@ -4,14 +4,24 @@ import os
 import asyncio
 import subprocess
 import time
-from plugins.download import upload_video
+from plugins.download import upload_video, file_mappings, cleanup_old_mappings
 
 # Handle encode callback
 @Client.on_callback_query(filters.regex(r"^encode_"))
 async def handle_encode_callback(client: Client, callback_query: CallbackQuery):
-    data = callback_query.data.split("_")
-    user_id = int(data[1])
-    file_name = "_".join(data[2:])
+    file_hash = callback_query.data.split("_")[1]
+    
+    # Clean up old mappings
+    cleanup_old_mappings()
+    
+    # Get file info from mapping
+    if file_hash not in file_mappings:
+        await callback_query.edit_message_text("❌ File expired! Please upload again.")
+        return
+    
+    file_info = file_mappings[file_hash]
+    user_id = file_info['user_id']
+    file_name = file_info['file_path']
     
     # Check if user matches
     if callback_query.from_user.id != user_id:
@@ -25,6 +35,9 @@ async def handle_encode_callback(client: Client, callback_query: CallbackQuery):
         return
     
     await callback_query.answer("🎬 Starting encoding...")
+    
+    # Remove from mappings
+    del file_mappings[file_hash]
     
     # Start encoding
     await encode_video(client, callback_query.message, input_path, user_id)
